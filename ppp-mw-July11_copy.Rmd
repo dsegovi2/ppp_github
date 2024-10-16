@@ -1,0 +1,536 @@
+---
+title:
+author:
+date:
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    number_sections: false
+    fig_caption: true
+    df_print: paged
+    theme: paper
+    chunk_output_type: console
+editor_options:
+  markdown:
+    wrap: sentence
+  chunk_output_type: console
+always_allow_html: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = F, warning = F, fig.pos="H", progress = FALSE)
+
+
+```
+
+
+```{r include=FALSE}
+library(tidyverse)   #for data manipulation dplyr, ggplot2, etc.
+library(data.table)  #for making csvs
+library(kableExtra)  #for show tables.
+library(sf)          #for geospatial manipulations
+library(tmap)        #for interactive maps
+library(RColorBrewer)
+library(tigris)
+library(tidycensus)
+library(mapview)
+
+## Bring in 2019 tract shapefile with PPP data joined 
+tracts_ppp_shp <- "cb_2019_us_tract_500k_PPP_join.shp"
+tracts_ppp <- st_read(tracts_ppp_shp)
+comm_areas <- st_read("geo_export_6a0e6e8f-d061-4b61-9c2f-179f6e9d061b.shp")
+
+# Codebook for the data:
+
+## General Information
+# **Dataset Name**: Chicago Census Tract Data
+# **Description**: This dataset contains information on various census tracts nationwide, including geographic identifiers and PPP loan data.
+# **Source**: [U.S. Census Bureau + ]
+# **Date**: [2019 Boundries]
+
+## Variables
+## 1. STATEFP: State FIPS code.
+## 2. COUNTYFP: County FIPS code.
+## 3. TRACTCE: Census tract code.
+## 4. AFFGEOID: American FactFinder geographic identifier.
+## 5. GEOID: Geographic identifier.
+## 6. NAME: Name of the census tract.
+# **Example Values**: "Census Tract 8416, Cook County, Illinois"
+## 7. LSAD: Legal/Statistical Area Description.
+## 8. ALAND: Land area in square meters.
+## 9. AWATER: Water area in square meters.
+## 10. geoid_1: Duplicate or alternate GEOID.
+## 11. OID_: Object ID.
+## 12. geoid_12: Another duplicate or alternate GEOID.
+## 13. nlc_trtp1: Number of loans per business for PPP Phases 1 and 2.
+## 14. nla_trtp1: Loan amounts per business for PPP Phases 1 and 2.
+## 15. nla_trtp2: Loan amounts per business for PPP Phase 3.
+## 16. nlc_trtp2: Number of loans per business for PPP Phase 3.
+## 17. trtrace2: Unknown/Unspecified variable. (Please clarify the meaning if available)
+## 18. Geometry: Geometric data of the census tract (polygon).
+
+# Notes
+## **FIPS Codes**: Federal Information Processing Standards codes used to uniquely identify states and counties.
+## **PPP Phases**: The dataset includes data on Paycheck Protection Program (PPP) loans distributed in different phases.
+## **Data Cleaning**: Ensure to handle missing values and outliers appropriately.
+## **Use Case**: This dataset is useful for analyzing geographic distribution and economic impact of PPP loans within Chicago.
+```
+
+# The Racial and Spatial Impacts of the Paycheck Protection Program.
+
+***Authors: T. William Lester and Matthew D. Wilson***
+
+\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_
+
+## **1. Summary:**
+
+The Paycheck Protection Program (PPP) was the largest component of the U.S. economic response to the COVID-19 pandemic, providing nearly $800 billion in emergency relief to small businesses. The program aimed to provide emergency economic relief to businesses and help them keep employees on payroll. As the program was administered, major concerns arose about its potential to exacerbate racial and spatial inequalities by providing economic relief in a manner that mirrored existing inequalities in the ability for businesses to access capital across race and space.
+
+In this analysis, we analyzed PPP lending patterns and found that majority Black and Latinx neighborhoods received disproportionately fewer loans than White and Asian neighborhoods in the first two phases of the program. However, policy changes in the third phase improved targeting to lower-income areas and minority borrowers, particularly in Black neighborhoods, though this improvement was not seen in Latinx neighborhoods.
+
+The research revealed that minority-owned businesses faced barriers to accessing PPP loans, with capital flowing to Black and Latinx neighborhoods in a pattern that mostly followed existing capital flows, resulting in fewer economic relief reaching communities of color controlling for the number of potentially eligible businesses and self-employed borrowers. 
+
+
+\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_
+
+## **2. Data Sources and Methodology:**
+
+We combined multiple nationwide datasets to map out PPP lending patterns across neighborhoods and relate them to demographics, mortgage lending, business presence, and bank branch accessibility - allowing a spatial analysis of inequality in access to the PPP funds.
+
+We obtained loan-level PPP data from the SBA, including address location, loan amounts, dates, and jobs reported. 8.89 million PPP loan records were then geocoded to map them to census tracts. To account for the geographic distribution of businesses, we normalized the PPP lending data by an estimate of eligible businesses in each tract, using business address data from HUD/USPS and self-employment data from the American Community Survey (ACS). The PPP data from the SBA includes a variable indicating the race of the borrowers but this information is left blank for nearly 80% of respondents. Therefore, we do not identify direct lending discrimination or disproportionate access for minority-owned businesses and instead investigate the PPP program through the spatial patterns of lending related to the racial characteristics of neighborhoods. To examine how PPP lending related to pre-existing lending patterns, we used residential mortgage data from HMDA at the tract level, including loan amounts, originations, denials by race/ethnicity. We also used FDIC data on bank branch locations to look at the role of physical access to banks.
+
+
+\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_
+
+## **3. Key findings:**
+
+We investigate whether the PPP exacerbated existing inequalities in access to capital across neighborhoods by race and income level and find:
+
+\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_
+
+#### **3.1 Majority Black and Latinx neighborhoods received disproportionately fewer PPP loans and loan dollars compared to majority White and Asian neighborhoods during the first two phases of the program (Table 1, maps 1-4).**
+
+**Table 1** shows the aggregate number of PPP loans, loan amounts, and jobs reported, broken down by the racial/ethnic majority of neighborhoods. It highlights how majority White neighborhoods received the vast majority of loans and dollars in Phases 1 and 2, but lending to majority Black areas increased significantly in Phase 3.
+
+```{r}
+# Table 1
+table1_csv <- "Neighborhood type,Census tracts,Percent,Phases 1 and 2,Percent,Phase 3,Percent,Phases 1 and 2,Percent,Phase 3,Percent,Phases 1 and 2,Percent,Phase 3,Percent
+Majority Asian,724,1.0%,61256,1.2%,42863,1.1%,7,1.4%,3,1.4%,773046,1.3%,325402,1.4%
+Majority Black,5930,8.2%,249874,4.9%,329116,8.8%,23.7,4.6%,12.2,5.7%,2847132,4.7%,1250178,5.2%
+Majority Latinx of any race,7677,10.6%,421580,8.2%,314684,8.4%,42.6,8.2%,18,8.3%,5487720,9.1%,2095577,8.7%
+Mixed,9286,12.8%,712073,13.9%,534862,14.3%,83,16.0%,34.1,15.8%,9339673,15.4%,3616260,15.1%
+Majority White non-Latinx,48722,67.4%,3674238,71.8%,2510565,67.3%,361.7,69.8%,148.3,68.8%,42114782,69.5%,16671462,69.6%
+Total,72339,100.0%,5119021,100.0%,3732090,100.0%,517.9,100.0%,215.6,100.0%,60562353,100.0%,23958879,100.0%"
+
+table1 <- fread(table1_csv, sep = ",")
+
+table1 %>%
+  kable(format = "html", align = "c", caption = "Table 1: Aggregate PPP Loan Counts, Loan Amounts and Jobs Reported by Neighborhood Race/Ethnic Majority and Phase.") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE) %>%
+  scroll_box(width = "100%", height = "600px") %>%
+   column_spec(1, bold = TRUE, width = "20em") %>%
+  add_footnote(label = "<br><br><em>Notes: Author’s analysis of SBA PPP loan level data released through April 1, 2021. Census tracts with greater than 50% of residents of each race/ethnicity are considered the majority. Mixed neighborhoods include tracts where no single racial or ethnic group makes up 50% or more of the total population.</em>", 
+               notation = "none", 
+               escape = FALSE)
+```
+
+**Maps 1, 2, 3** and **4** show the spatial patterns of PPP lending rates and loan amounts per business across these counties, comparing Phase 1 and 2 with Phase 3 in the top 50 most populated counties in the United States.
+
+```{r echo=FALSE, warning=FALSE, message = FALSE}
+# Read in MSAs
+msa <- core_based_statistical_areas(cb=TRUE, year = 2020) %>% 
+       filter(LSAD == "M1")
+
+#msa <- st_read("tl_2024_us_cbsa.shp") %>% 
+#       filter(LSAD == "M1")
+
+# Get MSA populations 
+msa_totpop_20 <- get_decennial(
+  geography = "cbsa",
+  variables = "P1_001N",
+  year = 2020
+)
+
+merged_data <- msa %>%
+  left_join(msa_totpop_20, by = c("GEOID" = "GEOID"))
+
+# Perform a left join
+msa <- msa %>%
+  left_join(msa_totpop_20, by = "GEOID")
+
+# Keep only the top 50 most populous MSAs
+top_50_msa <- msa %>%
+  arrange(desc(value)) %>%
+  slice(1:50)
+
+# Ensure the shapefile is in the WGS84 coordinate system
+tracts_ppp <- st_transform(tracts_ppp, crs = 4326)
+top_50_msa <- st_transform(top_50_msa, crs = 4326)
+
+# Spatial Join to get tracts that have their centroid in MSAs
+# Calculate centroids of the census blocks
+tracts_ppp_centroids <- st_centroid(tracts_ppp) 
+
+# Keep only blocks whose centroids are within the MSAs
+tracts_ppp_top_msa <- st_join(tracts_ppp_centroids, top_50_msa, join = st_within) %>% filter(!is.na(LSAD.y))
+
+# Join back to sf
+tracts_ppp_top_msa_sf <- st_join(tracts_ppp, tracts_ppp_top_msa, join = st_within) %>% filter(!is.na(NAME.y.1))
+
+# Filter the original shape_data to keep only those records whose centroids fall within the top 50 MSAs
+tracts_ppp_top_msa_sf <- tracts_ppp %>%
+  filter(GEOID %in% tracts_ppp_top_msa$GEOID.x)
+
+rm(msa, msa_totpop_20, tracts_ppp_centroids, tracts_ppp_top_msa, tracts_ppp_shp)
+
+# Define color palettes
+pal_loans <- rev(brewer.pal(10, "RdYlBu"))
+pal_amounts <- rev(brewer.pal(10, "RdYlBu"))
+
+
+# Load necessary libraries
+library(tmap)
+library(RColorBrewer)
+
+# Function to create a map
+create_map <- function(data, variable, palette, title, popup_label) {
+  data[[variable]] <- round(data[[variable]], 2)  # Round the variable to 2 decimal places
+  data$hover_text <- paste0(popup_label, ": ", data[[variable]])  # Create hover text with label and rounded value
+  
+  tm_shape(data) +
+    tm_polygons(col = variable, 
+                palette = palette, 
+                title = title, 
+                style = "quantile", 
+                n = 10,
+                popup.vars = c("GEOID"),  # Use hover_text for popup
+                id = "hover_text", 
+                alpha = .7) +
+    tm_layout(title = title,
+              legend.outside = TRUE,
+              legend.outside.position = "right") +
+    tm_shape(top_50_msa) +
+    tm_borders(col = "black", lwd = 2) +
+   tm_text("NAMELSAD", 
+          size = 0.3,          # Smaller base size
+          scale = 1.5,        # Moderate scale for growth
+          breaks = c(1, 0.2),  # Make text appear only at closer zoom levels
+          fontface = "bold", 
+          col = "black")
+}
+
+
+# Example usage for creating maps
+map1 <- create_map(tracts_ppp_top_msa_sf, "nlc_trtp1", pal_loans, "Phase 1 and 2: Loans per Business", "Phase 1 and 2: Loans per Business")
+map2 <- create_map(tracts_ppp_top_msa_sf, "nlc_trtp2", pal_loans, "Phase 3: Loans per Business", "Phase 3: Loans per Business")
+map3 <- create_map(tracts_ppp_top_msa_sf, "nla_trtp1", pal_amounts, "Phase 1 and 2: Loan Amount per Business", "Phase 1 and 2: Loan Amount per Business")
+map4 <- create_map(tracts_ppp_top_msa_sf, "nla_trtp2", pal_amounts, "Phase 3: Loan Amount per Business", "Phase 3: Loan Amount per Business")
+
+# Save interactive maps
+#tmap_mode("view")
+#tmap_save(map1, filename = "top_50_msa_map1.html")
+#tmap_save(map2, filename = "top_50_msa_map2.html")
+#tmap_save(map3, filename = "top_50_msa_map3.html")
+#tmap_save(map4, filename = "top_50_msa_map4.html")
+
+# Display example interactive maps
+tmap_mode("view")
+map1
+map2
+map3
+map4
+```
+
+<details>
+
+<summary>**Click to expand Cook County maps with Chicago Community Areas**</summary>
+
+**Note**: The following maps show the spatial patterns of PPP lending in Cook County with Chicago Community Areas.
+Maps 1 and 2 display loan counts per business, while Maps 3 and 4 show loan amounts per business, comparing Phase 1 and 2 with Phase 3.
+The maps visually depict the shift towards higher lending in majority Black neighborhoods in Phase 3.
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+
+#1 for Cook County
+
+cook_tracts <- tracts_ppp %>%
+  filter(STATEFP == "17", COUNTYFP == "031") # Filter for Cook County, Illinois
+
+# Create an sf object from the data
+cook_tracts_sf <- st_as_sf(cook_tracts, coords = c("INTPTLON", "INTPTLAT"), crs = 4269)
+
+# Transform the CRS to WGS84 (longitude-latitude)
+cook_tracts_sf <- st_transform(cook_tracts_sf, crs = 4326)
+
+# Create Chicago boundary
+cook_boundary <- cook_tracts_sf %>% 
+  st_union() %>% 
+  st_cast("MULTILINESTRING")
+
+# Add community areas to add boundaries to Cook County maps
+comm_areas <- st_transform(comm_areas, crs = 4326)
+
+# Define color palettes
+pal_loans <- rev(brewer.pal(10, "RdYlBu"))
+pal_amounts <- rev(brewer.pal(10, "RdYlBu"))
+
+# Function to create Cook County map
+create_map2 <- function(data, variable, palette, title, popup_label) {
+  data[[variable]] <- round(data[[variable]], 2)  # Round the variable to 2 decimal places
+  data$hover_text <- paste0(popup_label, ": ", data[[variable]])  # Create hover text with label and rounded value
+  
+  tm_shape(data) +
+    tm_polygons(col = variable, 
+                palette = palette, 
+                title = title, 
+                style = "quantile", 
+                n = 10,
+                popup.vars = c("GEOID"),  # Use hover_text for popup
+                id = "hover_text", 
+                alpha = 1) +
+    tm_layout(title = title,
+              legend.outside = TRUE,
+              legend.outside.position = "right") +
+    tm_shape(comm_areas) +
+    tm_borders(col = "black", lwd = 2)
+}
+
+# Create maps
+map1_cook <- create_map2(cook_tracts_sf, "nlc_trtp1", pal_loans, "Phase 1 and 2: Loans per Business", "Phase 1 and 2: Loans per Business")
+map2_cook <- create_map2(cook_tracts_sf, "nlc_trtp2", pal_loans, "Phase 3: Loans per Business", "Phase 3: Loans per Business")
+map3_cook <- create_map2(cook_tracts_sf, "nla_trtp1", pal_amounts, "Phase 1 and 2: Loan Amount per Business", "Phase 1 and 2: Loan Amount per Business")
+map4_cook <- create_map2(cook_tracts_sf, "nla_trtp2", pal_amounts, "Phase 3: Loan Amount per Business", "Phase 3: Loan Amount per Business")
+
+# Display interactive maps
+tmap_mode("view")
+map1_cook
+map2_cook
+map3_cook
+map4_cook
+```
+
+</details>
+
+\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_
+
+#### **3.2 In Phase 3, after policy changes, there was a significant increase in lending to majority Black neighborhoods, though not to majority Latinx neighborhoods (Refer to Table 1, and See Table 2).**
+
+**Table 2** presents the normalized mean rates of PPP lending (loans per eligible business, loan amount per business, jobs reported per business) by neighborhood racial/ethnic majority.
+It shows majority Black areas lagging White and Asian areas in Phases 1 and 2, but exceeding them in loan counts in Phase 3.
+
+```{r}
+# Table 2
+table2_csv <- "Neighborhood type,Number of tracts,Phases 1 and 2,Phase 3,Phases 1 and 2,Phase 3,Phases 1 and 2,Phase 3
+Majority Asian,724,0.49 (0.02),0.35 (0.01),55018 (9178),19830 (1187),7.83 (2.45),2.6 (0.41)
+Majority Black,5930,0.39 (0.01),0.68 (0.02),30244 (516),19879 (351),3.70 (0.06),1.90 (0.03)
+Majority Latinx of any race,7677,0.31 (0.01),0.25 (0.00),24530 (364),11169 (170),3.48 (0.06),1.39 (0.03)
+Mixed,9286,0.39 (0.00),0.34 (0.00),34655 (392),15865 (179),4.25 (0.04),1.74 (0.02)
+Majority White non-Latinx,48722,0.45 (0.00),0.34 (0.00),36785 (186),16045 (94),4.56 (0.02),1.87 (0.01)"
+
+table2 <- fread(table2_csv, sep = ",")
+
+table2 %>%
+  kable(format = "html", align = "c", caption = "Table 2. Normalized Mean PPP Lending Patterns by Majority Race/Ethnicity Census Tract by Phase.") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE) %>%
+   column_spec(1, bold = TRUE, width = "20em") %>%
+  add_footnote(label = "<br><br><em>Notes: Author’s analysis of SBA PPP loan level data. Standard errors listed below mean in parenthesis. </em>", 
+               notation = "none", 
+               escape = FALSE)
+```
+
+\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_
+
+#### **3.3 Economically disadvantaged, high-poverty neighborhoods received fewer PPP resources across all phases than wealthier areas, though there was some improvement for urban and rural poor areas in Phase 3 (Table 3).**
+
+Table 3 breaks down normalized lending rates by metropolitan location (urban, suburban, rural) and poverty levels, showing suburban and lower-poverty areas advantaged in earlier phases.
+
+```{r}
+table3_csv <- "Metropolitan poverty status,Number of tracts,Phases 1 and 2,Phase 3,Phases 1 and 2,Phase 3,Phases 1 and 2,Phase 3
+Rural low poverty,8350,0.421 (0.005),0.494 (0.011),28627 (325),15319 (286),3.671 (0.042),1.737 (0.031)
+Rural high poverty,3558,0.336 (0.005),0.361 (0.009),27329 (834),11863 (340),3744 (0.095),1.469 (0.040)
+Suburban low poverty,33757,0.471 (0.003),0.336 (0.002),38115 (229),16537 (107),4.671 (0.029),1.902 (0.014)
+Suburban high poverty,6366,0.321 (0.003),0.304 (0.005),31864 (733),14176 (259),4.022 (0.086),1.626 (0.035)
+Urban low poverty,10543,0.445 (0.005),0.345 (0.006),36133 (386),16627 (184),4.526 (0.047),1.872 (0.019)
+CBD,8316,0.316 (0.003),0.396 (0.009),31279 (455),15864 (236),3.838 (0.046),1.677 (0.021)"
+
+table3 <- fread(table3_csv, sep = ",")
+
+table3 %>%
+  kable(format = "html", align = "c", caption = "Table 3. Normalized PPP Lending Patterns by Metropolitan Status and Poverty Concentration, by Phase.") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE) %>%
+   column_spec(1, bold = TRUE, width = "20em") %>%
+  add_footnote(label = "<br><br><em>Notes: Author’s analysis of SBA PPP loan level data. High poverty census tracts are those with greater than 20% of persons living in households with incomes below the poverty level. CBD is the central business district. Standard errors listed below mean in parenthesis.</em>", 
+               notation = "none", 
+               escape = FALSE)
+```
+
+\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_
+
+#### **3.4 The geography of PPP lending patterns closely mirrored existing residential mortgage lending patterns from HMDA data, especially in highly segregated metro areas (Table 5).**
+
+**Table 5** ranks major metro areas by the correlation between their PPP and HMDA mortgage lending patterns, indicating older industrial segregated metros had very high correlations that decreased in Phase 3.
+
+```{r}
+# Table 5
+table5_csv <- "Core-based statistical area name,HMDA/PPP Tract rank correlation P1/2,HMDA/PPP Tract rank correlation P3
+Milwaukee-Waukesha [WI],0.693,0.404
+Indianapolis-Carmel-Anderson [IN],0.655,0.501
+Birmingham-Hoover [AL],0.653,0.501
+Memphis [TN]-[MS]-[AR],0.632,0.367
+Baltimore-Columbia-Towson [MD],0.63,0.554
+Chicago-Naperville-Elgin [IL]-[IN]-[WI],0.624,0.059
+Pittsburgh [PA],0.611,0.566
+Kansas City [MO]-[KS],0.589,0.55
+St. Louis [MO]-[IL],0.579,0.386
+Cleveland-Elyria [OH],0.576,0.182
+Columbus [OH],0.564,0.46
+Buffalo-Cheektowaga [NY],0.559,0.542
+Philadelphia-Camden-Wilmington [PA]-[NJ]-[DE]-[MD],0.559,0.403
+Detroit-Warren-Dearborn [MI],0.539,0.272
+Rochester [NY],0.535,0.535
+Boston-Cambridge-Newton [MA]-[NH],0.529,0.443
+Jacksonville [FL],0.526,0.413
+Cincinnati [OH]-[KY]-[IN],0.516,0.359
+New Orleans-Metairie [LA],0.514,0.373
+Houston-The Woodlands-Sugar Land [TX],0.51,0.424
+Oklahoma City. [OK],0.49,0.526
+Dallas-Fort Worth-Arlington [TX],0.487,0.431
+Charlotte-Concord-Gastonia [NC]-[SC],0.484,0.427
+Hartford-East Hartford-Middletown [CT],0.479,0.428
+Richmond [VA],0.473,0.497
+Grand Rapids-Kentwood [MI],0.468,0.412
+Atlanta-Sandy Springs-Alpharetta [GA],0.461,0.177
+Virginia Beach-Norfolk-Newport News [VA]-[NC],0.459,0.411
+New York-Newark-Jersey City [NY]-[NJ]-[PA],0.448,0.246
+Louisville/Jefferson County [KY]-[IN],0.437,0.389
+Providence-Warwick [RI]-[MA],0.432,0.402
+Tampa-St. Petersburg-Clearwater [FL],0.424,0.395
+Austin-Round Rock-Georgetown [TX],0.422,0.481
+Orlando-Kissimmee-Sanford [FL],0.406,0.339
+Minneapolis-St. Paul-Bloomington [MN]-[WI],0.402,0.346
+Raleigh-Cary. [NC],0.394,0.407
+Washington-Arlington-Alexandria [DC]-[VA]-[MD]-[WV],0.389,0.308
+Nashville-Davidson-Murfreesboro-Franklin [TN],0.38,0.324
+San Antonio-New Braunfels [TX],0.377,0.484
+Los Angeles-Long Beach-Anaheim [CA],0.373,0.311
+Phoenix-Mesa-Chandler [AZ],0.364,0.386
+Miami-Fort Lauderdale-Pompano Beach [FL],0.35,0.217
+San Diego-Chula Vista-Carlsbad [CA],0.33,0.294
+Las Vegas-Henderson-Paradise [NV],0.305,0.26
+Riverside-San Bernardino-Ontario [CA],0.29,0.345
+San Jose-Sunnyvale-Santa Clara [CA],0.251,0.253
+Salt Lake City. [UT],0.232,0.238
+Sacramento-Roseville-Folsom [CA],0.207,0.254
+Denver-Aurora-Lakewood [CO],0.176,0.205
+San Francisco-Oakland-Berkeley [CA],0.173,0.117
+Tucson [AZ],0.106,0.156
+Portland-Vancouver-Hillsboro [OR]-[WA],0.054,0.051
+Seattle-Tacoma-Bellevue [WA],0.035,-0.016"
+
+table5 <- fread(table5_csv, sep = ",")
+
+table5 %>%
+  kable(format = "html", align = "c", caption = "TABLE 5. Pearson’s Correlation Between HMDA Total Origination Rank and PPP Total Origination Rank among Census Tracts Within Metropolitan Areas with Populations Above 1 Million.") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE) %>%
+   column_spec(1, bold = TRUE, width = "20em") %>%
+  scroll_box(width = "100%", height = "600px")
+```
+
+\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_
+
+#### **3.5 Regression analysis confirmed that neighborhood racial composition and poverty rates were negatively associated with receiving PPP loans in Phases 1-2, but being a majority Black neighborhood had a positive effect in Phase 3 (Table 6).**
+
+**Table 6** presents the regression results modeling neighborhood-level PPP lending rates, confirming the racial composition and poverty level associations.
+
+```{r}
+# Table 6
+table6_csv <- "Variable,Phase 1 and 2,Phase 3,Phase 1 and 2,Phase 3
+Percent Black/African - American,-0.0532*** (0.0111),0.596*** (0.0120),-6680*** (943.8),6298*** (487.4)
+Percent Latinx of any race,-0.325*** (0.0130),-0.260*** (0.0142),-11940*** (-1107),-10415*** (571.5)
+Percent Asian,0.0118 (0.0231),0.0273 (0.0252),3834* (1977),-206.9 (1021)
+Poverty rate,-0.384*** (0.0204),-0.426*** (0.0222),-14233*** (1747),-8136*** (902.0)
+Total population,-6.92e-06*** (9.02e-07),3.20e-06*** (9.83e-07),-1.789*** (0.0730),-0.556*** (0.0377)
+Total employment,-6.83e-06*** (5.04e-07),-6.85e-06*** (5.88e-07),1.497*** (0.0567),0.251*** (0.0293)
+CRA loan count,0.000301*** (1.69e-05),6.41e-05*** (1.84e-05),-,-
+CRA loan amount,-,-,1.844*** (0.0373),0.608*** (0.0193)
+Tract rank in HMDA lending,2.36e-05*** (4.77e-06),-5.57e-05*** (5.20e-06),2.418*** (0.407),-0.300 (0.210)
+Number of bank branches,-0.00943*** (0.00110),-0.0119*** (0.00119),-2291*** (95.86),-819.7*** (49.51)
+PPP lenders per loan made,-0.00998*** (0.000731),-0.00502*** (0.000797),-1687*** (63.26),-773.8*** (32.67)
+Constant,0.571*** (0.00616),0.407*** (0.00671),43157*** (530.8),20468*** (274.1)
+CBSA fixed effect,Y,Y,Y,Y
+Observations,65887,65887,65787,65787
+R-squared,0.113,0.161,0.183,0.124"
+
+table6 <- fread(table6_csv, sep = ",")
+
+table6 %>%
+  kable(format = "html", align = "c", caption = "Table 6. OLS Regression Model Results, Predicting Normalized Loan Counts and Amounts, by Phase.") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE) %>%
+  add_header_above(c(" " = 1, "Normalized loan count 1, 3 ($)" = 2, "Normalized loan amount 1, 3 ($)" = 2)) %>%
+  column_spec(1, bold = TRUE, width = "20em") %>%
+  scroll_box(width = "100%", height = "600px") %>%
+  add_footnote(label = "<br><br><em>Notes: Dependent variable is the number of PPP loans or PPP loan dollars approved in each census tract, divided by the estimated number of eligible businesses. Sources: 1) SBA, 2) Census 2015-2019 ACS, 3) Reveal/CIR,) LODES, 5) CRA, 6) FFIEC HMDA, 7) FDIC. Standard errors in parentheses. Significance levels: *** p < 0.01, ** p < 0.05, * p < 0.1. </em>", 
+               notation = "none", 
+               escape = FALSE)
+```
+
+\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_
+
+## 4.Conclusion and Policy Implications
+
+**4.0 Emergency relief programs relying on existing financial institutions are likely to exacerbate racial and spatial inequalities unless intentionally designed to target disadvantaged communities from the outset, as the changes in Phase 3 attempted to do. Better data on discrimination in small business lending is also needed.**
+
+\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_
+
+#### **4.1 Overall Impact**
+
+-   The Paycheck Protection Program (PPP) largely adhered to existing capital flow mechanisms, resulting in fewer resources reaching communities of color and low-income neighborhoods.
+-   During the first two phases, majority Black and Latinx neighborhoods received disproportionately fewer loans and loan dollars, despite having potentially eligible businesses.
+-   Economically disadvantaged areas, indicated by high poverty concentrations, consistently received fewer resources across all phases.
+
+\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_
+
+#### **4.2 Notable Shifts in Phase 3**
+
+-   In Phase 3, there was a noticeable improvement in loan distribution to Black neighborhoods. This suggests that policy changes, such as early access to SBA-approved Community Financial Development Institutions and specialized loan pools for first-time borrowers and very small businesses, were effective.
+-   However, these changes did not significantly benefit majority Latinx areas, warranting further investigation, particularly in cities like Chicago, which showed a distinct spatial shift in lending patterns from Phases 1 and 2 to Phase 3.
+
+\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_
+
+#### **4.3 Comparison with Pre-Pandemic Lending Patterns**
+
+-   PPP lending patterns closely mirrored pre-pandemic residential mortgage lending patterns, with a strong correlation between a tract’s rank in receiving mortgage capital and PPP loans.
+-   Regions with high levels of spatially segregated economic opportunity and a history of racial segregation showed the highest correlation in lending patterns.
+-   The documented shifts suggest that policy changes can impact historical patterns of institutional racism and disinvestment.
+
+\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_
+
+#### **4.4 Limitations**
+
+-   Direct observation of racial discrimination in the PPP program was not possible due to the manner in which borrower race data was collected. Spatial and economic conditions at the census tract level were used as proxies.
+
+-   Inconsistencies in identifying specific lenders across data sets prevented systematic assessment of lending patterns by individual institutions.
+
+-   Lack of access to borrowers' or firms' creditworthiness data (e.g., credit scores) limited the ability to directly prove lending discrimination.
+
+-   Potential selection bias remains in the analysis, even after normalizing for the number of potential businesses and self-employed individuals.
+
+
+\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_
+
+#### **4.5 Policy Recommendations**
+
+##### **4.5.1. Targeted Credit Access:**
+
+Future emergency relief programs should include incentives to target communities of color and minority-owned businesses in the initial phase.
+
+##### **4.5.2. Early Inclusion of Diverse Lenders:**
+
+The increased lender pool in Phase 3, including Fintech and nonbank lenders with a history of improving capital access in underserved communities, should be utilized from the onset of the program.
+
+##### **4.5.3. Better Data Collection:**
+
+The Federal government should collect and disseminate better loan-level data on small business lending decisions, similar to HMDA data, to allow for more precise equity assessments and better transparency in lending operations.
+
+\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_
